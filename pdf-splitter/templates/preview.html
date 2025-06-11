@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>PDFページのプレビュー</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f4f4f9;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .preview-wrapper {
+      width: 100%;
+      max-width: 100%;
+      padding: 0 20px;
+      box-sizing: border-box;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: center;
+      align-items: center;
+      gap: 40px;
+      width: 100%;
+      margin-bottom: 40px;
+    }
+
+    .page-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .pdf-page {
+      max-height: 180px;
+      max-width: 140px;
+      object-fit: contain;
+    }
+
+    .page-number {
+      font-size: 14px;
+      margin-top: 6px;
+      color: #333;
+    }
+
+    .divider {
+      width: 10px;
+      height: 180px;
+      background: repeating-linear-gradient(
+        to bottom,
+        #999,
+        #999 6px,
+        transparent 6px,
+        transparent 12px
+      );
+      cursor: pointer;
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .divider.selected {
+      background: repeating-linear-gradient(
+        to bottom,
+        red,
+        red 6px,
+        transparent 6px,
+        transparent 12px
+      );
+    }
+
+    .label {
+      position: absolute;
+      top: -30px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: #fff;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-radius: 4px;
+      white-space: nowrap;
+      display: none;
+    }
+
+    .divider.selected .label {
+      display: block;
+    }
+
+    .button-container {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .submit-button, .cancel-button {
+      display: inline-block;
+    }
+
+    .submit-button button, .cancel-button button {
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      width: 150px;
+    }
+
+    .cancel-button button {
+      background-color: #aaa;
+    }
+
+    #popupOverlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.3);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #popupContent {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 600px;
+      width: 90%;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <h1>PDFページのプレビュー</h1>
+  <p>分割したい場所の点線を選択してから、「分割」ボタンを押してください。</p>
+
+  <form id="splitForm" action="{{ url_for('confirm') }}" method="post">
+    <div class="preview-wrapper">
+      {% for row in images|batch(5, '') %}
+        <div class="row">
+          {% for img in row %}
+            {% if img %}
+              <div class="page-block">
+                <img src="data:image/png;base64,{{ img.data }}" class="pdf-page" data-index="{{ img.index }}">
+                <div class="page-number">ページ {{ img.index + 1 }}</div>
+              </div>
+              {% if img.index + 1 < total %}
+                <div class="divider" data-index="{{ img.index }}">
+                  <div class="label"></div>
+                </div>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <input type="hidden" name="split_points" id="splitPoints">
+    <div class="button-container">
+      <div class="submit-button">
+        <button type="button" onclick="submitSplits()">分割</button>
+      </div>
+      <div class="cancel-button">
+        <button type="button" onclick="window.location.href='/'">キャンセル</button>
+      </div>
+    </div>
+  </form>
+
+  <div id="popupOverlay">
+    <div id="popupContent"></div>
+  </div>
+
+  <script>
+    const selectedSplits = new Set();
+
+    document.querySelectorAll('.divider').forEach(div => {
+      div.addEventListener('click', () => {
+        const index = parseInt(div.dataset.index);
+        const splitPage = index + 1;
+        if (selectedSplits.has(splitPage)) {
+          selectedSplits.delete(splitPage);
+          div.classList.remove('selected');
+          div.querySelector('.label').textContent = '';
+        } else {
+          selectedSplits.add(splitPage);
+          div.classList.add('selected');
+          const label = div.querySelector('.label');
+          const sorted = Array.from(selectedSplits).sort((a, b) => a - b);
+          const fileNumber = sorted.indexOf(splitPage) + 2;
+          label.textContent = `ファイル${fileNumber}の開始`;
+        }
+      });
+    });
+
+    function submitSplits() {
+      const hiddenInput = document.getElementById('splitPoints');
+      const splitPoints = Array.from(selectedSplits).sort((a, b) => a - b);
+      hiddenInput.value = splitPoints.join(',');
+
+      fetch("{{ url_for('confirm') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'split_points=' + encodeURIComponent(hiddenInput.value)
+      })
+      .then(response => response.text())
+      .then(html => {
+        const overlay = document.getElementById('popupOverlay');
+        const content = document.getElementById('popupContent');
+        content.innerHTML = html;
+        overlay.style.display = 'flex';
+      });
+    }
+  </script>
+</body>
+</html>
