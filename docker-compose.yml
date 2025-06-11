@@ -2,10 +2,11 @@ services:
   pdf-splitter:
     build: ./pdf-splitter
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
-      http_proxy: http://10.170.250.80:8080
-      https_proxy: http://10.170.250.80:8080
+      HTTP_PROXY: http://10.170.250.80:8080
+      HTTPS_PROXY: http://10.170.250.80:8080
+      NO_PROXY: localhost,127.0.0.1
     volumes:
       - ./pdf-splitter:/app
     restart: always
