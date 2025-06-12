@@ -69,7 +69,7 @@
     <li class="pdf-item" data-id="{{ pdf.id }}">
       {{ pdf.filename }}
       <div class="buttons">
-        <button class="edit-btn" onclick="alert('編集機能は今後実装予定です')">編集</button>
+        <button class="edit-btn" onclick="window.location.href = '/edit_pdf';">編集</button>
         <button class="delete-btn" onclick="removeItem(this)">削除</button>
       </div>
     </li>

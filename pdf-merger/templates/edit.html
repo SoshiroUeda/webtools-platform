@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>PDFページ編集</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f4f4f9;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .pdf-list-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        .pdf-section {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 300px; /* Adjust as needed */
+            overflow: hidden;
+            text-align: left;
+        }
+        .pdf-header {
+            padding: 15px 20px;
+            background-color: #f0f0f0;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .pdf-header h2 {
+            margin: 0;
+            font-size: 1.2em;
+            color: #333;
+        }
+        .expand-button {
+            background: none;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            transform: rotate(0deg);
+            transition: transform 0.3s ease;
+        }
+        .expand-button.expanded {
+            transform: rotate(90deg);
+        }
+        .page-grid {
+            display: flex;
+            flex-wrap: wrap;
+            padding: 10px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-out;
+        }
+        .page-grid.expanded {
+            max-height: 1000px; /* A large enough value to show all content */
+        }
+        .page-item {
+            width: calc(50% - 20px); /* Two columns, considering gap */
+            margin: 10px;
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            padding: 10px;
+            text-align: center;
+            cursor: grab;
+            box-sizing: border-box;
+            position: relative;
+        }
+        .page-item.dragging {
+            opacity: 0.5;
+            border: 2px dashed #0078D4;
+        }
+        .page-item img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto 5px auto;
+            border: 1px solid #ccc;
+        }
+        .page-number {
+            font-size: 0.9em;
+            color: #555;
+        }
+        .action-buttons {
+            margin-top: 30px;
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .save-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .save-btn:hover {
+            background-color: #45a049;
+        }
+        .back-btn {
+            background-color: #0078D4;
+            color: white;
+        }
+        .back-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDFページ編集</h1>
+    <p>すべてのPDFのページをまとめて並び替えできます</p>
+
+    <div class="pdf-list-container" id="globalPageListContainer">
+        {% for pdf_data in all_pdfs_data %}
+        <div class="pdf-section" data-pdf-id="{{ pdf_data.id }}">
+            <div class="pdf-header">
+                <h2>{{ pdf_data.filename }}</h2>
+                <button class="expand-button">&#9654;</button> <!-- Right-pointing triangle -->
+            </div>
+            <div class="page-grid">
+                {% for page in pdf_data.pages %}
+                <div class="page-item" data-pdf-id="{{ page.original_pdf_id }}" data-page-index="{{ page.original_page_index }}" draggable="true">
+                    {% if page.thumbnail_url %}
+                        <img src="{{ page.thumbnail_url }}" alt="Page {{ page.page_number }}">
+                    {% else %}
+                        <div style="width: 200px; height: 280px; background-color: #ccc; display: flex; align-items: center; justify-content: center;">No Thumbnail</div>
+                    {% endif %}
+                    <div class="page-number">ページ {{ page.page_number }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="action-buttons">
+        <button class="save-btn" id="saveButton">変更を保存</button>
+        <button class="back-btn" onclick="window.location.href='/main'">メイン画面に戻る</button>
+    </div>
+
+    <script>
+        let draggingItem = null;
+        let currentDropTarget = null;
+        const globalPageListContainer = document.getElementById('globalPageListContainer');
+        const saveButton = document.getElementById('saveButton');
+
+        // Expand/Collapse functionality
+        document.querySelectorAll('.pdf-header').forEach(header => {
+            header.addEventListener('click', (e) => {
+                const pdfSection = header.closest('.pdf-section');
+                const pageGrid = pdfSection.querySelector('.page-grid');
+                const expandButton = header.querySelector('.expand-button');
+
+                if (pageGrid.classList.contains('expanded')) {
+                    pageGrid.classList.remove('expanded');
+                    expandButton.classList.remove('expanded');
+                    pageGrid.style.maxHeight = '0';
+                } else {
+                    pageGrid.classList.add('expanded');
+                    expandButton.classList.add('expanded');
+                    // Set max-height to scrollHeight to allow smooth transition
+                    pageGrid.style.maxHeight = pageGrid.scrollHeight + 'px';
+                }
+            });
+        });
+
+        // Drag and Drop functionality (Global)
+        globalPageListContainer.addEventListener('dragstart', (e) => {
+            // Ensure we are dragging a .page-item
+            if (!e.target.classList.contains('page-item')) return;
+            draggingItem = e.target;
+            e.dataTransfer.effectAllowed = 'move';
+            draggingItem.classList.add('dragging');
+        });
+
+        globalPageListContainer.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            // Find the closest droppable element (another page-item or the container itself)
+            const target = e.target.closest('.page-item') || e.target.closest('.page-grid');
+
+            if (target && target !== draggingItem) {
+                if (currentDropTarget && currentDropTarget !== target) {
+                    currentDropTarget.classList.remove('drag-over');
+                }
+                target.classList.add('drag-over');
+                currentDropTarget = target;
+
+                if (target.classList.contains('page-item')) {
+                    const afterElement = getDragAfterElement(globalPageListContainer, e.clientY);
+                    if (afterElement !== draggingItem) {
+                        if (afterElement == null) {
+                            target.closest('.page-grid').appendChild(draggingItem);
+                        } else {
+                            target.closest('.page-grid').insertBefore(draggingItem, afterElement);
+                        }
+                    }
+                } else if (target.classList.contains('page-grid')) {
+                    // If dragging over an empty page-grid or at the end of a page-grid
+                    const lastChild = target.lastElementChild;
+                    if (!lastChild || e.clientY > lastChild.getBoundingClientRect().bottom) {
+                         target.appendChild(draggingItem);
+                    }
+                }
+            } else if (currentDropTarget) {
+                currentDropTarget.classList.remove('drag-over');
+                currentDropTarget = null;
+            }
+        });
+
+        globalPageListContainer.addEventListener('dragleave', (e) => {
+            // Only remove highlight if leaving the current drop target to a non-drop target
+            if (!e.relatedTarget || (!e.relatedTarget.closest('.page-item') && !e.relatedTarget.closest('.page-grid'))) {
+                 if (currentDropTarget) {
+                    currentDropTarget.classList.remove('drag-over');
+                    currentDropTarget = null;
+                }
+            }
+        });
+
+        globalPageListContainer.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (currentDropTarget) {
+                currentDropTarget.classList.remove('drag-over');
+                currentDropTarget = null;
+            }
+            // The actual DOM manipulation happened in dragover, so just clean up
+            draggingItem.classList.remove('dragging');
+            draggingItem = null;
+        });
+
+        globalPageListContainer.addEventListener('dragend', () => {
+            if (draggingItem) {
+                draggingItem.classList.remove('dragging');
+            }
+            draggingItem = null;
+            if (currentDropTarget) {
+                currentDropTarget.classList.remove('drag-over');
+                currentDropTarget = null;
+            }
+        });
+
+        function getDragAfterElement(container, y) {
+            // This function now needs to consider all draggable elements across all page-grids
+            const draggableElements = [...container.querySelectorAll('.page-item:not(.dragging)')];
+
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: -Infinity }).element;
+        }
+
+        saveButton.addEventListener('click', () => {
+            const globalPageOrder = [];
+            globalPageListContainer.querySelectorAll('.page-item').forEach(item => {
+                globalPageOrder.push({
+                    pdf_id: item.dataset.pdfId,
+                    page_index: parseInt(item.dataset.pageIndex)
+                });
+            });
+            
+            // Send the global page order to the server
+            fetch('/update_global_page_order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ order: globalPageOrder }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('すべてのページの順序が保存されました。');
+                } else {
+                    alert('ページの順序保存に失敗しました: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error updating global page order:', error);
+                alert('ページの順序保存中にエラーが発生しました。');
+            });
+        });
+
+    </script>
+</body>
+</html> 
