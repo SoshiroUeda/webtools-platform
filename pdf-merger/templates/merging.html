@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>結合中</title>
+  <style>
+    body {
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        background-color: #f4f4f9;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+    }
+    .container {
+        background-color: #fff;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        width: 90%;
+        max-width: 400px;
+    }
+    p {
+        font-size: 1.5em;
+        color: #333;
+        margin-bottom: 30px;
+    }
+    .loading {
+        display: inline-block;
+        width: 50px;
+        height: 50px;
+        border: 5px solid rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+        border-top-color: #ff0000;
+        animation: spin 1s ease-in-out infinite;
+        margin-bottom: 30px;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    button {
+        padding: 10px 20px;
+        background-color: #aaa;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+    }
+    button:hover {
+        background-color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div style="text-align:center; margin-top:100px;">
+    <p style="font-size:1.5em;">PDFを結合中です。しばらくお待ちください。</p>
+    <div class="loading"></div>
+    <button onclick="window.location.href='/main'">キャンセル</button>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        fetch('/execute_merge', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    window.location.href = data.redirect_url;
+                } else {
+                    alert('PDFの結合中にエラーが発生しました: ' + data.message);
+                    window.location.href = '/main'; // エラー時はメイン画面に戻る
+                }
+            })
+            .catch(error => {
+                console.error('Error during merge execution:', error);
+                alert('PDFの結合中に予期せぬエラーが発生しました。');
+                window.location.href = '/main'; // エラー時はメイン画面に戻る
+            });
+    });
+  </script>
+</body>
+</html> 

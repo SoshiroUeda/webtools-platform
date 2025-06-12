@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>PDF 分割ツール - アップロード</title>
+    <title>PDF 結合ツール - アップロード</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -69,7 +69,7 @@
     <div class="container">
         <h1>PDFファイルをアップロード</h1>
         <form id="uploadForm" enctype="multipart/form-data">
-            <input type="file" name="file" accept=".pdf" required>
+            <input type="file" name="pdf_files" accept=".pdf" multiple required>
             <br>
             <button type="submit">アップロード</button>
         </form>
@@ -77,22 +77,24 @@
     <script>
         document.getElementById('uploadForm').addEventListener('submit', function(e) {
             e.preventDefault();
-            // Display uploading message with loading spinner
-            document.body.innerHTML = '<div style="text-align:center; margin-top:100px;"><p style="font-size:1.5em;">アップロード中です。しばらくお待ちください。</p><div class="loading"></div><br><button onclick="window.location.href=\'/\'" style="padding:10px 20px; background-color: #aaa;">キャンセル</button></div>';
-            // Asynchronously upload the PDF
-            var formData = new FormData(this);
-            fetch('/preview', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.text())
-            .then(html => {
-                document.open();
-                document.write(html);
-                document.close();
-            });
+
+            // uploading.html へ遷移してアップロード画面を表示
+            const formData = new FormData(this);
+            fetch('/upload', { method: 'POST' })
+                .then(() => {
+                    // アップロードページ表示後にファイルアップロード処理
+                    fetch('/main', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.text())
+                    .then(html => {
+                        document.open();
+                        document.write(html);
+                        document.close();
+                    });
+                });
         });
     </script>
 </body>
 </html>
- 

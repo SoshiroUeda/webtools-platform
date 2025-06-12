@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF結合ツール - メイン画面</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f4f4f9;
+      padding: 40px;
+      text-align: center;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    ul#pdf-list {
+      list-style: none;
+      padding: 0;
+      width: 100%;
+      max-width: 600px;
+      margin: auto;
+    }
+    li.pdf-item {
+      background-color: #fff;
+      padding: 12px 20px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+      cursor: grab;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .buttons {
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      padding: 6px 12px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .edit-btn {
+      background-color: #0078D4;
+      color: #fff;
+    }
+    .delete-btn {
+      background-color: #aaa;
+      color: #fff;
+    }
+    .action-buttons {
+      margin-top: 30px;
+    }
+    .merge-btn {
+      background-color: #4CAF50;
+      color: #fff;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>PDFファイルの並び替え</h1>
+  <p>PDFファイルをドラッグして順序を変更できます</p>
+
+  <ul id="pdf-list">
+    {% for pdf in pdfs %}
+    <li class="pdf-item" data-id="{{ pdf.id }}">
+      {{ pdf.filename }}
+      <div class="buttons">
+        <button class="edit-btn" onclick="alert('編集機能は今後実装予定です')">編集</button>
+        <button class="delete-btn" onclick="removeItem(this)">削除</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div class="action-buttons">
+    <button class="merge-btn" id="mergeButton">結合</button>
+  </div>
+
+  <script>
+    // 並び替えライブラリ（シンプルな例）
+    let draggingItem;
+    const list = document.getElementById('pdf-list');
+    const mergeButton = document.getElementById('mergeButton');
+
+    list.addEventListener('dragstart', (e) => {
+      draggingItem = e.target;
+      e.dataTransfer.effectAllowed = 'move';
+      // Add a class to the dragging item to make it visually distinct (optional, but good for UX)
+      draggingItem.classList.add('dragging');
+    });
+
+    list.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const afterElement = getDragAfterElement(list, e.clientY);
+      const currentElement = document.querySelector('.dragging');
+      if (afterElement == null) {
+        list.appendChild(currentElement);
+      } else {
+        list.insertBefore(currentElement, afterElement);
+      }
+    });
+
+    list.addEventListener('dragend', () => {
+        draggingItem.classList.remove('dragging');
+        draggingItem = null;
+    });
+
+    function getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.pdf-item:not(.dragging)')];
+
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: -Infinity }).element;
+    }
+
+    list.querySelectorAll('.pdf-item').forEach(item => {
+      item.setAttribute('draggable', 'true');
+    });
+
+    function removeItem(button) {
+      const item = button.closest('.pdf-item');
+      const pdfId = item.dataset.id; // Get the ID of the PDF to delete
+
+      fetch('/delete_pdf', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id: pdfId }),
+      })
+      .then(response => response.json())
+      .then(data => {
+          if (data.status === 'success') {
+              item.remove(); // Remove the item from the DOM if deletion was successful on the server
+              alert('PDFが削除されました。');
+          } else {
+              alert('PDFの削除に失敗しました: ' + data.message);
+          }
+      })
+      .catch(error => {
+          console.error('Error deleting PDF:', error);
+          alert('PDFの削除中にエラーが発生しました。');
+      });
+    }
+
+    mergeButton.addEventListener('click', () => {
+        const pdfOrder = Array.from(list.children).map(item => item.dataset.id);
+
+        fetch('/update_pdf_order', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ order: pdfOrder }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                window.location.href = '/merging'; // Redirect to the merging page after successful order update
+            } else {
+                alert('PDFの順序更新に失敗しました: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error updating PDF order:', error);
+            alert('PDFの順序更新中にエラーが発生しました。');
+        });
+    });
+  </script>
+</body>
+</html>
