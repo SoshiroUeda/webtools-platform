@@ -5,8 +5,8 @@ import tempfile
 import uuid
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 import shutil
-from PIL import Image # For image processing
-import subprocess # For running poppler-utils commands
+from pdf2image import convert_from_path # For PDF to image conversion
+from io import BytesIO # For image processing in memory
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
@@ -14,39 +14,37 @@ app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 app.config['THUMBNAIL_FOLDER'] = os.path.join(tempfile.gettempdir(), 'pdf_thumbnails')
 
-# Ensure thumbnail directory exists
+# Ensure thumbnail directory exists (exist_ok=True allows creation even if it exists)
 if not os.path.exists(app.config['THUMBNAIL_FOLDER']):
-    os.makedirs(app.config['THUMBNAIL_FOLDER'])
+    os.makedirs(app.config['THUMBNAIL_FOLDER'], exist_ok=True)
 
 # Helper function to convert a PDF page to an image
-def _convert_pdf_page_to_image(pdf_path, page_num, output_path):
+def _convert_pdf_page_to_image(pdf_path, page_num, desired_thumbnail_path):
+    """
+    指定されたPDFのページを画像に変換し、指定されたパスに保存するヘルパー関数。
+    desired_thumbnail_path は、最終的に保存したい画像ファイルのフルパス。
+    """
+    print(f"[DEBUG] _convert_pdf_page_to_image called for PDF: {pdf_path}, Page: {page_num + 1}, Desired path: {desired_thumbnail_path}")
     try:
-        # poppler-utilsのpdftoppmコマンドを使用
-        # -png: PNG形式で出力
-        # -f <ページ番号>: 開始ページ
-        # -l <ページ番号>: 終了ページ
-        # -scale-to-width 200: 幅を200pxにスケール (適宜調整)
-        # <入力PDF> <出力パス接頭辞>
-        command = [
-            "pdftoppm",
-            "-png",
-            "-f", str(page_num + 1), # pdftoppmは1ベースのページ番号
-            "-l", str(page_num + 1),
-            "-scale-to-width", "200", # Thumbnail width
+        # pdf2image.convert_from_path を使用して特定のページを画像に変換
+        # page_num は0ベースなので、pdftoppmの-f/-lオプションと同様に+1する
+        images = convert_from_path(
             pdf_path,
-            output_path.replace(".png", "") # pdftoppm adds page number, so remove .png suffix
-        ]
-        subprocess.run(command, check=True, capture_output=True)
-        # pdftoppm will create output_path-1.png for single page
-        return f"{output_path.replace('.png', '')}-{page_num + 1}.png"
-    except subprocess.CalledProcessError as e:
-        print(f"Error converting PDF page to image: {e.stderr.decode()}")
-        return None
-    except FileNotFoundError:
-        print("pdftoppm not found. Please install poppler-utils.")
-        return None
+            first_page=page_num + 1,
+            last_page=page_num + 1,
+            size=(200, None) # 幅を200pxにスケール (高さを自動調整)
+        )
+
+        if images:
+            # 変換された画像（単一ページなのでリストの最初の要素）をPNGとして保存
+            images[0].save(desired_thumbnail_path, format='PNG')
+            print(f"[DEBUG] Thumbnail saved to {desired_thumbnail_path}")
+            return desired_thumbnail_path
+        else:
+            print(f"[ERROR] pdf2image did not convert page {page_num + 1} from {pdf_path}")
+            return None
     except Exception as e:
-        print(f"An unexpected error occurred during PDF to image conversion: {e}")
+        print(f"[ERROR] An error occurred during PDF to image conversion using pdf2image: {e}")
         return None
 
 
@@ -56,7 +54,7 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    return render_template('uploading.html')
+    return render_template('upload.html')
 
 @app.route('/main', methods=['GET', 'POST'])
 def main():
@@ -87,6 +85,7 @@ def main():
 
 @app.route('/edit_pdf') # No longer takes pdf_id as argument
 def edit_pdf():
+    print("[DEBUG] /edit_pdf route accessed.")
     all_pdfs_data = []
     pdfs_in_session = session.get('pdf_files', [])
 
@@ -96,7 +95,7 @@ def edit_pdf():
         filename = pdf_data['filename']
 
         if not os.path.exists(pdf_path):
-            print(f"Warning: PDF file not found at {pdf_path}")
+            print(f"[WARNING] PDF file not found at {pdf_path} for PDF ID {pdf_id}. Skipping.")
             continue
 
         try:
@@ -107,15 +106,21 @@ def edit_pdf():
                 thumbnail_filename = f"{pdf_id}_page_{i}.png"
                 thumbnail_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumbnail_filename)
 
+                print(f"[DEBUG] Checking thumbnail for PDF {pdf_id}, page {i}: {thumbnail_path}")
                 if not os.path.exists(thumbnail_path):
-                    # Only generate if not already exists
+                    print(f"[DEBUG] Thumbnail not found. Attempting to generate for {pdf_path} page {i}.")
                     generated_path = _convert_pdf_page_to_image(pdf_path, i, thumbnail_path)
                     if generated_path and os.path.exists(generated_path): # Check if generation was successful
-                        os.rename(generated_path, thumbnail_path) # Rename to desired filename
+                        print(f"[DEBUG] Thumbnail generation successful for {pdf_id}, page {i}.")
+                        pass
                     else:
+                        print(f"[ERROR] Thumbnail generation failed or file not found after generation for {pdf_id}, page {i}.")
                         thumbnail_path = None # Indicate failure
+                else:
+                    print(f"[DEBUG] Thumbnail already exists for {pdf_id}, page {i}.")
 
-                thumbnail_url = url_for('get_pdf_page_image', pdf_id=pdf_id, page_num=i) if thumbnail_path else None
+                thumbnail_url = url_for('get_pdf_page_image', pdf_id=pdf_id, page_num=i) if thumbnail_path and os.path.exists(thumbnail_path) else None
+                print(f"[DEBUG] Thumbnail URL for PDF {pdf_id}, page {i}: {thumbnail_url}")
 
                 pages_data.append({
                     'page_number': i + 1,
@@ -129,7 +134,7 @@ def edit_pdf():
                 'pages': pages_data
             })
         except Exception as e:
-            print(f"Error processing PDF {filename}: {e}")
+            print(f"[ERROR] Error processing PDF {filename} (ID: {pdf_id}): {e}")
             continue
 
     # Store current page order in session for persistence across reloads
@@ -150,12 +155,35 @@ def edit_pdf():
 def get_pdf_page_image(pdf_id, page_num):
     thumbnail_filename = f"{pdf_id}_page_{page_num}.png"
     thumbnail_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumbnail_filename)
+    print(f"[DEBUG] /get_pdf_page_image accessed for {pdf_id}, page {page_num}. Looking for: {thumbnail_path}")
 
     if os.path.exists(thumbnail_path):
+        print(f"[DEBUG] Thumbnail found at {thumbnail_path}. Sending file.")
         return send_file(thumbnail_path, mimetype='image/png')
     else:
+        print(f"[WARNING] Thumbnail not found at {thumbnail_path}. Attempting regeneration or returning 404.")
         # If for some reason thumbnail is missing, try to regenerate or return placeholder
-        # For now, return 404
+        # Try to regenerate thumbnail if not found
+        pdfs_in_session = session.get('pdf_files', [])
+        target_pdf_path = None
+        for pdf_data in pdfs_in_session:
+            if pdf_data['id'] == pdf_id:
+                target_pdf_path = pdf_data['path']
+                break
+        
+        if target_pdf_path and os.path.exists(target_pdf_path):
+            print(f"[DEBUG] Original PDF found at {target_pdf_path}. Attempting to regenerate thumbnail.")
+            generated_path = _convert_pdf_page_to_image(target_pdf_path, page_num, thumbnail_path)
+            if generated_path and os.path.exists(generated_path):
+                print(f"[DEBUG] Thumbnail regenerated successfully for {pdf_id}, page {page_num}.")
+                # If generation successful, and it's not already the correct name, rename it
+                if generated_path != thumbnail_path: # This check is redundant after the fix, but harmless.
+                    os.rename(generated_path, thumbnail_path)
+                return send_file(thumbnail_path, mimetype='image/png')
+            else:
+                print(f"[ERROR] Regeneration failed for {pdf_id}, page {page_num}.")
+
+        print(f"[ERROR] Image not found and could not be regenerated for {pdf_id}, page {page_num}.")
         return "Image not found", 404
 
 
