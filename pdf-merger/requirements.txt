@@ -1,8 +1,8 @@
- 
 Flask==3.1.0
 PyPDF2==3.0.1
 pdf2image==1.16.3
 Pillow==10.2.0
+gunicorn==21.0.0 # 最新の安定版を推奨しますが、特定のバージョンを指定しても構いません
 # Flask依存
 blinker==1.9.0
 click==8.1.8

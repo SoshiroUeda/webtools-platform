@@ -38,7 +38,7 @@ def _convert_pdf_page_to_image(pdf_path, page_num, output_path):
         ]
         subprocess.run(command, check=True, capture_output=True)
         # pdftoppm will create output_path-1.png for single page
-        return f"{output_path.replace(".png", "")}-{page_num + 1}.png"
+        return f"{output_path.replace('.png', '')}-{page_num + 1}.png"
     except subprocess.CalledProcessError as e:
         print(f"Error converting PDF page to image: {e.stderr.decode()}")
         return None
