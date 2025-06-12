@@ -10,3 +10,15 @@ services:
     volumes:
       - ./pdf-splitter:/app
     restart: always
+
+  pdf-merger:
+    build: ./pdf-merger
+    ports:
+      - "5002:5000"
+    environment:
+      HTTP_PROXY: http://10.170.250.80:8080
+      HTTPS_PROXY: http://10.170.250.80:8080
+      NO_PROXY: localhost,127.0.0.1
+    volumes:
+      - ./pdf-merger:/app
+    restart: always
