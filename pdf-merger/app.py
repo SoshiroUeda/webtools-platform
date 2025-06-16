@@ -67,13 +67,16 @@ def main():
         for file in uploaded_files:
             if file.filename == '':
                 continue
-            filename = secure_filename(file.filename)
+            original_filename = file.filename # 表示用の元のファイル名
             unique_id = str(uuid.uuid4())
-            save_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{unique_id}_{filename}")
+            file_extension = os.path.splitext(original_filename)[1] # 元の拡張子を取得
+            # ディスクに保存するファイル名はUUIDと拡張子のみにする
+            save_filename = f"{unique_id}{file_extension}"
+            save_path = os.path.join(app.config['UPLOAD_FOLDER'], save_filename)
             file.save(save_path)
             pdf_list.append({
                 'id': unique_id,
-                'filename': filename,
+                'filename': original_filename, # 表示用には元のファイル名を使用
                 'path': save_path
             })
 
@@ -100,6 +103,7 @@ def edit_pdf():
 
         try:
             reader = PdfReader(pdf_path)
+            total_pages_in_pdf = len(reader.pages) # PDFの総ページ数を取得
             pages_data = []
             for i in range(len(reader.pages)):
                 # Generate thumbnail and get its URL
@@ -131,6 +135,7 @@ def edit_pdf():
             all_pdfs_data.append({
                 'id': pdf_id,
                 'filename': filename,
+                'total_pages': total_pages_in_pdf, # 総ページ数を追加
                 'pages': pages_data
             })
         except Exception as e:
