@@ -1,0 +1,13 @@
+version: '3'
+services:
+  pdf-splitter:
+    build: .
+    ports:
+      - "5001:5000"
+    environment:
+      HTTP_PROXY: http://10.170.250.80:8080
+      HTTPS_PROXY: http://10.170.250.80:8080
+      NO_PROXY: localhost,127.0.0.1
+    volumes:
+      - ../:/app
+    restart: always
